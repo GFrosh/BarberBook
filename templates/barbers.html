@@ -1,0 +1,60 @@
+{% extends 'base.html' %}
+{% block title %}Our Barbers · BarberBook{% endblock %}
+{% block content %}
+<section class="section">
+  <div class="section-head">
+    <span class="eyebrow">The Team</span>
+    <h2>Meet the chair masters</h2>
+    <p>Each of our barbers brings their own specialty, style and signature flair. Pick the hands that match your vibe.</p>
+  </div>
+
+  <div class="filterbar">
+    <input type="search" id="qInput" placeholder="🔍  Search by name or specialty…" style="flex:1; min-width:220px;">
+    <select id="sortBy">
+      <option value="-rating">Top rated</option>
+      <option value="-years_experience">Most experienced</option>
+      <option value="display_name">Name A–Z</option>
+    </select>
+  </div>
+
+  <div id="grid" class="barber-grid"></div>
+</section>
+{% endblock %}
+
+{% block scripts %}
+<script>
+const grid = document.getElementById('grid');
+const q = document.getElementById('qInput');
+const sortBy = document.getElementById('sortBy');
+
+async function load() {
+  const params = { active: 'true' };
+  if (q.value) params.search = q.value;
+  if (sortBy.value) params.ordering = sortBy.value;
+  try {
+    const list = await BB.listBarbers(params);
+    if (!list.length) { grid.innerHTML = `<div class="empty-state"><div class="ico">💈</div>No barbers on staff yet.</div>`; return; }
+    grid.innerHTML = list.map(b => `
+      <article class="barber-card">
+        <div class="avatar-wrap"><img src="${b.avatar_url || placeholderAvatar(b.display_name)}" alt="${b.display_name}"></div>
+        <div class="body">
+          <h3>${b.display_name}</h3>
+          <div class="specialty">${b.specialty || 'Master Barber'}</div>
+          <div class="stars">${stars(b.rating)} <span class="muted" style="font-size:.85rem; color: var(--muted);">${b.rating}</span></div>
+          <div class="exp">${b.years_experience}+ yrs experience · ${(b.services_detail || []).length} services</div>
+          <div class="barber-actions">
+            <a href="/barber/${b.id}/" class="btn btn-outline btn-sm" style="flex:1;">Profile</a>
+            <a href="/book/?barber=${b.id}" class="btn btn-primary btn-sm" style="flex:1;">Book</a>
+          </div>
+        </div>
+      </article>
+    `).join('');
+  } catch (e) { console.error(e); toast('Failed to load barbers', 'error'); }
+}
+
+let t;
+q.addEventListener('input', () => { clearTimeout(t); t = setTimeout(load, 250); });
+sortBy.addEventListener('change', load);
+load();
+</script>
+{% endblock %}

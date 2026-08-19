@@ -1,0 +1,200 @@
+{% extends 'base.html' %}
+{% block title %}Book an Appointment · BarberBook{% endblock %}
+{% block content %}
+<section class="section">
+  <div class="section-head" style="margin-bottom:1.5rem;">
+    <span class="eyebrow">Reservation</span>
+    <h2>Book your appointment</h2>
+  </div>
+
+  <div class="book-grid">
+    <div>
+      <!-- Step 1: Service -->
+      <div class="book-step">
+        <div class="step-head"><div class="num">1</div><h3>Choose a service</h3></div>
+        <div id="serviceList" class="pick-grid"></div>
+      </div>
+
+      <!-- Step 2: Barber -->
+      <div class="book-step">
+        <div class="step-head"><div class="num">2</div><h3>Pick your barber</h3></div>
+        <div id="barberList" class="pick-grid"></div>
+      </div>
+
+      <!-- Step 3: Date & Time -->
+      <div class="book-step">
+        <div class="step-head"><div class="num">3</div><h3>Date & time</h3></div>
+        <div class="form-row" style="margin-bottom:1rem;">
+          <div class="form-group">
+            <label>Date</label>
+            <input type="date" id="dateInput" class="form-control">
+          </div>
+          <div class="form-group">
+            <label>Working hours</label>
+            <input type="text" id="hoursLabel" class="form-control" disabled value="Select barber first">
+          </div>
+        </div>
+        <div id="slotGrid" class="slot-grid"></div>
+        <div id="slotsMsg" class="muted mt-2" style="text-align:center;"></div>
+      </div>
+
+      <!-- Step 4: Notes -->
+      <div class="book-step">
+        <div class="step-head"><div class="num">4</div><h3>Anything we should know?</h3></div>
+        <textarea id="notesInput" class="form-control" rows="2" placeholder="Hair type, preferred style, fragrance allergies…"></textarea>
+      </div>
+    </div>
+
+    <!-- Sticky summary -->
+    <aside>
+      <div class="summary">
+        <h3>Your reservation</h3>
+        <div class="row"><span class="k">Service</span><span id="sumService">—</span></div>
+        <div class="row"><span class="k">Barber</span><span id="sumBarber">—</span></div>
+        <div class="row"><span class="k">Date</span><span id="sumDate">—</span></div>
+        <div class="row"><span class="k">Time</span><span id="sumTime">—</span></div>
+        <div class="row"><span class="k">Duration</span><span id="sumDuration">—</span></div>
+        <div class="row" style="margin-top:.5rem; padding-top:1rem;"><span class="k">Total</span><span class="total" id="sumTotal">$0</span></div>
+        <button id="confirmBtn" class="btn btn-gold btn-block mt-3" disabled>Confirm appointment</button>
+        <p class="muted mt-2" style="font-size:.8rem; color: rgba(255,250,240,0.5); text-align:center;">Bookings start as <b style="color:var(--gold);">pending</b> until the shop confirms.</p>
+      </div>
+    </aside>
+  </div>
+</section>
+{% endblock %}
+
+{% block scripts %}
+<script>
+if (!requireAuth('/login/')) {} else {
+  const state = { service: null, barber: null, date: null, slot: null };
+  let allServices = [], allBarbers = [];
+
+  const params = new URLSearchParams(location.search);
+  const presetService = params.get('service');
+  const presetBarber = params.get('barber');
+
+  function render() {
+    // service list
+    document.getElementById('serviceList').innerHTML = allServices.map(s => `
+      <button class="pick ${state.service?.id===s.id?'selected':''}" data-sid="${s.id}">
+        <div class="pick-title">${serviceIcon(s.category)} ${s.name}</div>
+        <div class="pick-sub">${s.duration_minutes} min · ${formatMoney(s.price)}</div>
+      </button>
+    `).join('');
+
+    // barber list — filter to those who offer the chosen service
+    let barbers = allBarbers;
+    if (state.service) {
+      barbers = allBarbers.filter(b => (b.services_detail || []).some(s => s.id === state.service.id));
+    }
+    document.getElementById('barberList').innerHTML = barbers.length ? barbers.map(b => `
+      <button class="pick ${state.barber?.id===b.id?'selected':''}" data-bid="${b.id}">
+        <div class="pick-title">${b.display_name}</div>
+        <div class="pick-sub">${b.specialty || 'Master Barber'} · ${stars(b.rating)}</div>
+      </button>
+    `).join('') : `<div class="muted">${state.service ? 'No barbers offer this service yet.' : 'Pick a service first.'}</div>`;
+
+    // summary
+    document.getElementById('sumService').textContent = state.service?.name || '—';
+    document.getElementById('sumBarber').textContent = state.barber?.display_name || '—';
+    document.getElementById('sumDate').textContent = state.date || '—';
+    document.getElementById('sumTime').textContent = state.slot ? `${state.slot.start} – ${state.slot.end}` : '—';
+    document.getElementById('sumDuration').textContent = state.service ? `${state.service.duration_minutes} min` : '—';
+    document.getElementById('sumTotal').textContent = state.service ? formatMoney(state.service.price) : '$0';
+    document.getElementById('confirmBtn').disabled = !(state.service && state.barber && state.date && state.slot);
+  }
+
+  async function loadSlots() {
+    const grid = document.getElementById('slotGrid');
+    const msg = document.getElementById('slotsMsg');
+    if (!(state.service && state.barber && state.date)) {
+      grid.innerHTML = ''; msg.textContent = 'Pick a service, barber and date to see times.';
+      document.getElementById('hoursLabel').value = state.barber ? `${state.barber.work_start.slice(0,5)} – ${state.barber.work_end.slice(0,5)}` : 'Select barber first';
+      return;
+    }
+    grid.innerHTML = ''; msg.textContent = 'Loading…';
+    try {
+      const data = await BB.barberSlots(state.barber.id, state.date, state.service.id);
+      document.getElementById('hoursLabel').value = data.works_on_this_day
+        ? `${data.work_start} – ${data.work_end}` : `${state.barber.display_name} is off this day`;
+      if (!data.works_on_this_day || !data.slots.length) {
+        msg.textContent = data.works_on_this_day
+          ? 'No slots fit this service on this day.'
+          : `${state.barber.display_name} doesn't work on this day. Try another date.`;
+        return;
+      }
+      msg.textContent = '';
+      grid.innerHTML = data.slots.map(s => `
+        <button class="slot ${!s.available?'disabled':''} ${state.slot?.start===s.start?'selected':''}"
+                ${!s.available?'disabled':''} data-start="${s.start}" data-end="${s.end}">
+          ${s.start}
+        </button>
+      `).join('');
+    } catch (e) { msg.textContent = 'Failed to load slots.'; }
+  }
+
+  // event delegation
+  document.addEventListener('click', (e) => {
+    const sBtn = e.target.closest('[data-sid]');
+    if (sBtn) {
+      state.service = allServices.find(s => s.id === parseInt(sBtn.dataset.sid));
+      // reset barber if they don't offer this service
+      if (state.barber && !(state.barber.services_detail || []).some(s => s.id === state.service.id)) state.barber = null;
+      state.slot = null;
+      render(); loadSlots();
+    }
+    const bBtn = e.target.closest('[data-bid]');
+    if (bBtn) {
+      state.barber = allBarbers.find(b => b.id === parseInt(bBtn.dataset.bid));
+      state.slot = null;
+      render(); loadSlots();
+    }
+    const slot = e.target.closest('.slot:not(.disabled)');
+    if (slot) {
+      state.slot = { start: slot.dataset.start, end: slot.dataset.end };
+      document.querySelectorAll('.slot').forEach(x => x.classList.remove('selected'));
+      slot.classList.add('selected');
+      render();
+    }
+  });
+
+  document.getElementById('dateInput').addEventListener('change', (e) => {
+    state.date = e.target.value; state.slot = null; render(); loadSlots();
+  });
+
+  document.getElementById('confirmBtn').addEventListener('click', async () => {
+    if (document.getElementById('confirmBtn').disabled) return;
+    try {
+      await BB.createAppointment({
+        barber: state.barber.id, service: state.service.id,
+        appointment_date: state.date, start_time: state.slot.start,
+        notes: document.getElementById('notesInput').value || '',
+      });
+      toast('Appointment booked! ✂️', 'success');
+      setTimeout(() => { location.href = '/dashboard/'; }, 700);
+    } catch (err) {
+      const d = err.data;
+      let msg = 'Booking failed';
+      if (d && typeof d === 'object') msg = Object.entries(d).map(([k,v])=>`${k}: ${Array.isArray(v)?v.join(' '):v}`).join(' · ');
+      toast(msg, 'error');
+    }
+  });
+
+  // init
+  (async () => {
+    [allServices, allBarbers] = await Promise.all([
+      BB.listServices({ active: 'true' }),
+      BB.listBarbers({ active: 'true' }),
+    ]);
+    // preset
+    if (presetService) state.service = allServices.find(s => s.id === parseInt(presetService));
+    if (presetBarber) state.barber = allBarbers.find(b => b.id === parseInt(presetBarber));
+    // default date = today
+    const today = new Date().toISOString().slice(0,10);
+    const di = document.getElementById('dateInput');
+    di.min = today; di.value = today; state.date = today;
+    render(); loadSlots();
+  })();
+}
+</script>
+{% endblock %}

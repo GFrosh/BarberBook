@@ -1,0 +1,72 @@
+{% extends 'base.html' %}
+{% block title %}Services & Pricing · BarberBook{% endblock %}
+{% block content %}
+<section class="section">
+  <div class="section-head">
+    <span class="eyebrow">The Menu</span>
+    <h2>Services & pricing</h2>
+    <p>Every service is performed by a master barber. Pick what you need, then we'll match you with the right hands.</p>
+  </div>
+
+  <div class="filterbar">
+    <input type="search" id="qInput" placeholder="🔍  Search the menu…" style="flex:1; min-width:220px;">
+    <select id="catFilter">
+      <option value="">All categories</option>
+      <option value="haircut">Haircut</option>
+      <option value="beard">Beard</option>
+      <option value="shave">Shave</option>
+      <option value="combo">Haircut + Beard</option>
+      <option value="kids">Kids</option>
+      <option value="styling">Styling & Wash</option>
+    </select>
+    <select id="sortBy">
+      <option value="price">Price: Low → High</option>
+      <option value="-price">Price: High → Low</option>
+      <option value="duration_minutes">Duration: Short → Long</option>
+      <option value="name">Name A–Z</option>
+    </select>
+  </div>
+
+  <div id="grid" class="service-grid"></div>
+</section>
+{% endblock %}
+
+{% block scripts %}
+<script>
+const grid = document.getElementById('grid');
+const q = document.getElementById('qInput');
+const catF = document.getElementById('catFilter');
+const sortBy = document.getElementById('sortBy');
+
+async function load() {
+  const params = { active: 'true' };
+  if (q.value) params.search = q.value;
+  if (catF.value) params.category = catF.value;
+  if (sortBy.value) params.ordering = sortBy.value;
+  try {
+    const list = await BB.listServices(params);
+    if (!list.length) { grid.innerHTML = `<div class="empty-state"><div class="ico">✂️</div>No services match your filters.</div>`; return; }
+    grid.innerHTML = list.map(s => `
+      <article class="service-card">
+        <div class="cat">${serviceIcon(s.category)} ${s.category_display}</div>
+        <h3>${s.name}</h3>
+        <p>${s.description || 'A signature service from our master barbers.'}</p>
+        <div class="service-meta">
+          <div>
+            <div class="service-price">${formatMoney(s.price)}</div>
+            <div class="service-duration">${s.duration_minutes} min</div>
+          </div>
+          <a href="/book/?service=${s.id}" class="btn btn-primary btn-sm">Book</a>
+        </div>
+      </article>
+    `).join('');
+  } catch (e) { console.error(e); toast('Failed to load menu', 'error'); }
+}
+
+let t;
+q.addEventListener('input', () => { clearTimeout(t); t = setTimeout(load, 250); });
+catF.addEventListener('change', load);
+sortBy.addEventListener('change', load);
+load();
+</script>
+{% endblock %}

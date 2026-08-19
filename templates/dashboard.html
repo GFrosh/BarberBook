@@ -1,0 +1,77 @@
+{% extends 'base.html' %}
+{% block title %}My Bookings · BarberBook{% endblock %}
+{% block content %}
+<section class="section">
+  <div class="flex-between" style="margin-bottom:2rem;">
+    <div>
+      <span class="eyebrow">My Account</span>
+      <h2 style="margin:0;">Hi <span id="greetName">there</span> ✂️</h2>
+      <p class="muted">Your appointments at a glance.</p>
+    </div>
+    <a href="/book/" class="btn btn-gold">Book another →</a>
+  </div>
+
+  <div class="dash-tabs">
+    <button class="dash-tab active" data-tab="upcoming">Upcoming</button>
+    <button class="dash-tab" data-tab="past">Past</button>
+    <button class="dash-tab" data-tab="all">All</button>
+  </div>
+
+  <div id="list"></div>
+</section>
+{% endblock %}
+{% block scripts %}
+<script>
+if (!requireAuth()) {} else {
+  document.getElementById('greetName').textContent = BB.getUser().username;
+  let ALL = []; let activeTab = 'upcoming';
+
+  function render() {
+    const today = new Date().toISOString().slice(0,10);
+    let list = ALL;
+    if (activeTab === 'upcoming') list = ALL.filter(r => r.appointment_date >= today && ['pending','confirmed'].includes(r.status));
+    else if (activeTab === 'past') list = ALL.filter(r => r.appointment_date < today || ['completed','cancelled','rejected','no_show'].includes(r.status));
+
+    if (!list.length) {
+      document.getElementById('list').innerHTML = `<div class="empty-state"><div class="ico">📭</div>No bookings in this view.</div>`;
+      return;
+    }
+
+    document.getElementById('list').innerHTML = `
+      <div class="table-wrap"><table class="bb-table">
+        <thead><tr><th>Service</th><th>Barber</th><th>Date</th><th>Time</th><th>Total</th><th>Status</th><th></th></tr></thead>
+        <tbody>${list.map(r => `
+          <tr>
+            <td><b>${r.service_detail.name}</b><br><span class="muted" style="font-size:.8rem;">${serviceIcon(r.service_detail.category)} ${r.service_detail.category_display}</span></td>
+            <td>${r.barber_detail.display_name}<br><span class="muted" style="font-size:.8rem;">${r.barber_detail.specialty || ''}</span></td>
+            <td>${r.appointment_date}</td>
+            <td>${r.start_time.slice(0,5)} – ${r.end_time.slice(0,5)}<br><span class="muted" style="font-size:.8rem;">${r.duration_minutes} min</span></td>
+            <td><b>${formatMoney(r.total_price)}</b></td>
+            <td>${formatStatus(r.status)}</td>
+            <td>${['pending','confirmed'].includes(r.status) ? `<button class="btn btn-ghost btn-sm" onclick="cancelAppt(${r.id})">Cancel</button>` : ''}</td>
+          </tr>`).join('')}</tbody></table></div>`;
+  }
+
+  async function load() {
+    try {
+      const r = await BB.listAppointments();
+      ALL = r.results || r;
+      render();
+    } catch (e) { toast('Failed to load bookings', 'error'); }
+  }
+
+  window.cancelAppt = async (id) => {
+    if (!confirm('Cancel this appointment?')) return;
+    try { await BB.cancelAppointment(id); toast('Appointment cancelled', 'success'); load(); }
+    catch (e) { toast(e.message || 'Could not cancel', 'error'); }
+  };
+
+  document.querySelectorAll('.dash-tab').forEach(t => t.addEventListener('click', () => {
+    document.querySelectorAll('.dash-tab').forEach(x => x.classList.remove('active'));
+    t.classList.add('active'); activeTab = t.dataset.tab; render();
+  }));
+
+  load();
+}
+</script>
+{% endblock %}

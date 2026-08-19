@@ -1,0 +1,61 @@
+{% extends 'base.html' %}
+{% block title %}Barber Profile · BarberBook{% endblock %}
+{% block content %}
+<section class="section">
+  <div id="profile"></div>
+</section>
+{% endblock %}
+{% block scripts %}
+<script>
+const pk = location.pathname.split('/').filter(Boolean).pop();
+(async () => {
+  try {
+    const b = await BB.getBarber(pk);
+    const days = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
+    const off = new Set(b.days_off_list || []);
+    document.getElementById('profile').innerHTML = `
+      <div style="display:grid; grid-template-columns: 360px 1fr; gap: 2.5rem; align-items: start;">
+        <div>
+          <div style="aspect-ratio:1/1; border-radius: var(--radius-lg); overflow:hidden; background: var(--ink-900);">
+            <img src="${b.avatar_url || placeholderAvatar(b.display_name)}" style="width:100%; height:100%; object-fit:cover;">
+          </div>
+          <a href="/book/?barber=${b.id}" class="btn btn-gold btn-block mt-3">Book with ${b.display_name.split(' ')[0]} →</a>
+        </div>
+        <div>
+          <span class="eyebrow">${b.specialty || 'Master Barber'}</span>
+          <h1>${b.display_name}</h1>
+          <div class="stars" style="font-size:1.3rem;">${stars(b.rating)} <span style="font-family: 'Playfair Display'; color: var(--ink-900); font-size:1.1rem; margin-left:.5rem;">${b.rating}</span></div>
+          <p class="muted mt-2">${b.bio || 'A skilled barber with a steady hand and a sharp eye for detail.'}</p>
+          <div style="background: var(--ivory); padding: 1.5rem; border-radius: var(--radius-lg); border:1px solid var(--line); margin-top: 1.5rem;">
+            <h3 style="font-size:1.1rem; margin-bottom:1rem;">Hours & Availability</h3>
+            <div style="display:grid; grid-template-columns: repeat(7, 1fr); gap:.4rem; margin-bottom:1rem;">
+              ${days.map((d,i) => `
+                <div style="text-align:center; padding:.5rem .2rem; border-radius:6px; background:${off.has(i)?'var(--line)':'var(--paper-2)'}; color:${off.has(i)?'var(--muted)':'var(--ink-900)'}; font-size:.75rem; font-weight:600;">
+                  ${d}<br><span style="font-size:.7rem;">${off.has(i)?'Off':'On'}</span>
+                </div>
+              `).join('')}
+            </div>
+            <div class="muted">Working hours: <b style="color:var(--ink-900);">${b.work_start.slice(0,5)} – ${b.work_end.slice(0,5)}</b> · ${b.years_experience}+ yrs experience</div>
+          </div>
+          <h3 style="margin-top:2rem;">Services offered</h3>
+          <div class="service-grid" style="margin-top:1rem;">
+            ${(b.services_detail || []).map(s => `
+              <article class="service-card">
+                <div class="cat">${serviceIcon(s.category)} ${s.category_display}</div>
+                <h3 style="font-size:1.15rem;">${s.name}</h3>
+                <div class="service-meta" style="margin-top:.5rem;">
+                  <div><div class="service-price" style="font-size:1.3rem;">${formatMoney(s.price)}</div><div class="service-duration">${s.duration_minutes} min</div></div>
+                  <a href="/book/?barber=${b.id}&service=${s.id}" class="btn btn-primary btn-sm">Book</a>
+                </div>
+              </article>
+            `).join('') || '<div class="muted">No services assigned yet.</div>'}
+          </div>
+        </div>
+      </div>
+    `;
+  } catch (e) {
+    document.getElementById('profile').innerHTML = `<div class="empty-state">Barber not found.</div>`;
+  }
+})();
+</script>
+{% endblock %}

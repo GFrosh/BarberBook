@@ -1,0 +1,73 @@
+{% extends 'base.html' %}
+{% block title %}BarberBook · Classic cuts, modern booking{% endblock %}
+{% block content %}
+<section class="hero">
+  <div class="hero-inner">
+    <span class="eyebrow" style="color: var(--gold);">Est. 2026 · Master Barbers · Sharp Cuts</span>
+    <h1>Reserve your seat <span class="gold">at the chair.</span></h1>
+    <p class="lead">Skip the wait and book your next cut, beard trim or hot-towel shave in under a minute. Pick a barber, pick a time — we'll save your slot.</p>
+    <div class="hero-actions">
+      <a href="/book/" class="btn btn-gold">Book an appointment →</a>
+      <a href="/barbers/" class="btn btn-outline" style="color: var(--ivory); border-color: rgba(255,250,240,0.5);">Meet the barbers</a>
+    </div>
+    <div class="hero-stats">
+      <div class="stat-card"><div class="num" id="statBarbers">—</div><div class="lbl">Master barbers</div></div>
+      <div class="stat-card"><div class="num" id="statServices">—</div><div class="lbl">Services on menu</div></div>
+      <div class="stat-card"><div class="num">15 min</div><div class="lbl">Booking grid</div></div>
+      <div class="stat-card"><div class="num">0</div><div class="lbl">Double-bookings</div></div>
+    </div>
+  </div>
+</section>
+
+<section class="section">
+  <div class="section-head">
+    <span class="eyebrow">Why BarberBook</span>
+    <h2>Built for barbers. Loved by regulars.</h2>
+    <p>Real-time availability, smart conflict prevention and a beautiful booking flow — for shops that care about both craft and customer experience.</p>
+  </div>
+  <div class="features">
+    <div class="feature"><div class="icon">📅</div><h3>15-min smart slots</h3><p>Auto-generated time grid based on each barber's hours and service duration. No more guesswork.</p></div>
+    <div class="feature"><div class="icon">✂️</div><h3>Per-barber availability</h3><p>Each barber has their own services, working hours and days off — booked exactly the way your shop runs.</p></div>
+    <div class="feature"><div class="icon">🛡️</div><h3>Zero double-bookings</h3><p>Server-side overlap detection per barber. Past dates, off days and out-of-hours times are blocked automatically.</p></div>
+    <div class="feature"><div class="icon">👤</div><h3>Three roles</h3><p>Customers manage their bookings. Barbers see their schedule. Admins run the shop. Clean separation of access.</p></div>
+    <div class="feature"><div class="icon">⚡</div><h3>REST API + JWT</h3><p>Django REST Framework with JWT auth. Plug a mobile app, kiosk or POS into the same backend.</p></div>
+    <div class="feature"><div class="icon">📊</div><h3>Owner dashboard</h3><p>Revenue tracking, top barbers, top services, today's chair count — all in one operator console.</p></div>
+  </div>
+</section>
+
+<section class="section" style="padding-top:0;">
+  <div class="section-head">
+    <span class="eyebrow">Popular Services</span>
+    <h2>Today on the menu</h2>
+  </div>
+  <div id="featuredServices" class="service-grid"></div>
+  <div class="text-center mt-3"><a href="/services/" class="btn btn-primary">See full menu →</a></div>
+</section>
+{% endblock %}
+
+{% block scripts %}
+<script>
+(async function() {
+  try {
+    const [services, barbers] = await Promise.all([BB.listServices({active:'true'}), BB.listBarbers({active:'true'})]);
+    document.getElementById('statBarbers').textContent = barbers.length;
+    document.getElementById('statServices').textContent = services.length;
+    const featured = services.slice(0, 3);
+    document.getElementById('featuredServices').innerHTML = featured.map(s => `
+      <article class="service-card">
+        <div class="cat">${serviceIcon(s.category)} ${s.category_display}</div>
+        <h3>${s.name}</h3>
+        <p>${s.description || 'A signature service from our master barbers.'}</p>
+        <div class="service-meta">
+          <div>
+            <div class="service-price">${formatMoney(s.price)}</div>
+            <div class="service-duration">${s.duration_minutes} min</div>
+          </div>
+          <a href="/book/?service=${s.id}" class="btn btn-primary btn-sm">Book</a>
+        </div>
+      </article>
+    `).join('') || `<div class="empty-state">No services on the menu yet.</div>`;
+  } catch (e) { console.error(e); }
+})();
+</script>
+{% endblock %}

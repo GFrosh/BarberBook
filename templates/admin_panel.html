@@ -1,0 +1,299 @@
+{% extends 'base.html' %}
+{% block title %}Admin · BarberBook{% endblock %}
+{% block content %}
+<section class="section">
+  <div class="flex-between" style="margin-bottom:1.5rem;">
+    <div><span class="eyebrow">Shop Console</span><h2 style="margin:0;">Admin Dashboard</h2></div>
+    <div class="flex gap-1">
+      <button class="btn btn-outline btn-sm" onclick="openServiceModal()">+ Service</button>
+      <button class="btn btn-gold btn-sm" onclick="openBarberModal()">+ Barber</button>
+    </div>
+  </div>
+
+  <div id="kpis" class="kpi-grid"></div>
+
+  <div class="dash-tabs">
+    <button class="dash-tab active" data-tab="appts">Appointments</button>
+    <button class="dash-tab" data-tab="barbers">Barbers</button>
+    <button class="dash-tab" data-tab="services">Services</button>
+    <button class="dash-tab" data-tab="analytics">Analytics</button>
+  </div>
+
+  <div id="content"></div>
+</section>
+
+<!-- Service modal -->
+<div class="modal-backdrop" id="serviceModal">
+  <div class="modal">
+    <h3 id="serviceModalTitle">Add Service</h3>
+    <form id="serviceForm">
+      <input type="hidden" name="id">
+      <div class="form-group"><label>Name</label><input class="form-control" name="name" required></div>
+      <div class="form-row">
+        <div class="form-group"><label>Category</label>
+          <select class="form-control" name="category" required>
+            <option value="haircut">Haircut</option><option value="beard">Beard</option>
+            <option value="shave">Shave</option><option value="combo">Haircut + Beard</option>
+            <option value="kids">Kids</option><option value="styling">Styling & Wash</option>
+          </select>
+        </div>
+        <div class="form-group"><label>Duration (min)</label><input type="number" class="form-control" name="duration_minutes" min="5" max="240" required value="30"></div>
+      </div>
+      <div class="form-row">
+        <div class="form-group"><label>Price ($)</label><input type="number" step="0.01" class="form-control" name="price" required></div>
+        <div class="form-group"><label>Image URL</label><input class="form-control" name="image_url"></div>
+      </div>
+      <div class="form-group"><label>Description</label><textarea class="form-control" name="description" rows="2"></textarea></div>
+      <div class="form-group"><label><input type="checkbox" name="is_active" checked> Active</label></div>
+      <div class="flex gap-1">
+        <button class="btn btn-primary" type="submit">Save</button>
+        <button class="btn btn-ghost" type="button" onclick="closeServiceModal()">Cancel</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- Barber modal -->
+<div class="modal-backdrop" id="barberModal">
+  <div class="modal">
+    <h3 id="barberModalTitle">Add Barber</h3>
+    <form id="barberForm">
+      <input type="hidden" name="id">
+      <div class="form-group"><label>Display name</label><input class="form-control" name="display_name" required></div>
+      <div class="form-row">
+        <div class="form-group"><label>Specialty</label><input class="form-control" name="specialty" placeholder="Fades · Beard sculpting"></div>
+        <div class="form-group"><label>Years experience</label><input type="number" class="form-control" name="years_experience" min="0" value="0"></div>
+      </div>
+      <div class="form-row">
+        <div class="form-group"><label>Work start</label><input type="time" class="form-control" name="work_start" required value="09:00"></div>
+        <div class="form-group"><label>Work end</label><input type="time" class="form-control" name="work_end" required value="19:00"></div>
+      </div>
+      <div class="form-group"><label>Days off (0=Mon … 6=Sun, comma-separated)</label><input class="form-control" name="days_off" placeholder="e.g. 6 for Sundays off"></div>
+      <div class="form-group"><label>Avatar URL</label><input class="form-control" name="avatar_url"></div>
+      <div class="form-group"><label>Bio</label><textarea class="form-control" name="bio" rows="2"></textarea></div>
+      <div class="form-group"><label>Services offered</label>
+        <div id="serviceCheckboxes" style="display:grid; grid-template-columns: 1fr 1fr; gap:.4rem;"></div>
+      </div>
+      <div class="form-group"><label><input type="checkbox" name="is_active" checked> Active</label></div>
+      <div class="flex gap-1">
+        <button class="btn btn-primary" type="submit">Save</button>
+        <button class="btn btn-ghost" type="button" onclick="closeBarberModal()">Cancel</button>
+      </div>
+    </form>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+if (!requireAdmin()) {}
+else {
+  let active = 'appts';
+  let allServices = [];
+
+  async function loadStats() {
+    try {
+      const s = await BB.adminStats();
+      document.getElementById('kpis').innerHTML = `
+        <div class="kpi"><div class="lbl">Total bookings</div><div class="val">${s.totals.appointments}</div></div>
+        <div class="kpi"><div class="lbl">Pending</div><div class="val" style="color:#b8860b;">${s.totals.pending}</div></div>
+        <div class="kpi"><div class="lbl">Confirmed</div><div class="val" style="color:var(--leaf);">${s.totals.confirmed}</div></div>
+        <div class="kpi"><div class="lbl">Completed</div><div class="val">${s.totals.completed}</div></div>
+        <div class="kpi"><div class="lbl">Revenue</div><div class="val">${formatMoney(s.totals.revenue)}</div></div>
+        <div class="kpi"><div class="lbl">Today</div><div class="val">${s.totals.today_appointments}</div></div>
+      `;
+      window.__stats = s;
+    } catch (e) {}
+  }
+
+  async function renderTab() {
+    const c = document.getElementById('content');
+    c.innerHTML = `<div class="empty-state">Loading…</div>`;
+    if (active === 'appts') {
+      try {
+        const list = await BB.adminAppointments();
+        c.innerHTML = list.length ? `
+          <div class="table-wrap"><table class="bb-table">
+            <thead><tr><th>#</th><th>Customer</th><th>Barber</th><th>Service</th><th>When</th><th>Total</th><th>Status</th><th>Actions</th></tr></thead>
+            <tbody>${list.map(r => `
+              <tr>
+                <td>#${r.id}</td>
+                <td>${r.customer_username}</td>
+                <td>${r.barber_detail.display_name}</td>
+                <td>${r.service_detail.name}<br><span class="muted" style="font-size:.8rem;">${r.duration_minutes} min</span></td>
+                <td>${r.appointment_date}<br><span class="muted" style="font-size:.85rem;">${r.start_time.slice(0,5)} – ${r.end_time.slice(0,5)}</span></td>
+                <td>${formatMoney(r.total_price)}</td>
+                <td>${formatStatus(r.status)}</td>
+                <td>
+                  ${r.status === 'pending' ? `
+                    <button class="btn btn-success btn-sm" onclick="setStatus(${r.id},'confirmed')">Confirm</button>
+                    <button class="btn btn-danger btn-sm" onclick="setStatus(${r.id},'rejected')">Reject</button>` : ''}
+                  ${r.status === 'confirmed' ? `
+                    <button class="btn btn-outline btn-sm" onclick="setStatus(${r.id},'completed')">Complete</button>
+                    <button class="btn btn-ghost btn-sm" onclick="setStatus(${r.id},'no_show')">No-show</button>` : ''}
+                </td>
+              </tr>`).join('')}</tbody></table></div>
+        ` : `<div class="empty-state">No appointments yet.</div>`;
+      } catch (e) { c.innerHTML = `<div class="empty-state">Failed to load.</div>`; }
+    } else if (active === 'barbers') {
+      try {
+        const list = await BB.listBarbers();
+        c.innerHTML = `
+          <div class="table-wrap"><table class="bb-table">
+            <thead><tr><th>Barber</th><th>Specialty</th><th>Hours</th><th>Days off</th><th>Services</th><th>Status</th><th>Actions</th></tr></thead>
+            <tbody>${list.map(b => `
+              <tr>
+                <td style="display:flex; align-items:center; gap:.6rem;">
+                  <img src="${b.avatar_url || placeholderAvatar(b.display_name)}" style="width:38px;height:38px;border-radius:50%;object-fit:cover;">
+                  <div><b>${b.display_name}</b><br><span class="muted" style="font-size:.8rem;">${b.years_experience}y · ${stars(b.rating)}</span></div>
+                </td>
+                <td>${b.specialty || '—'}</td>
+                <td>${b.work_start.slice(0,5)} – ${b.work_end.slice(0,5)}</td>
+                <td>${dayNames(b.days_off_list)}</td>
+                <td>${(b.services_detail || []).length}</td>
+                <td>${b.is_active ? '<span class="pill pill-confirmed">Active</span>' : '<span class="pill pill-rejected">Inactive</span>'}</td>
+                <td>
+                  <button class="btn btn-outline btn-sm" onclick='editBarber(${JSON.stringify(b).replace(/'/g,"\\'")})'>Edit</button>
+                  <button class="btn btn-danger btn-sm" onclick="deleteBarber(${b.id})">Delete</button>
+                </td>
+              </tr>`).join('')}</tbody></table></div>`;
+      } catch (e) { c.innerHTML = `<div class="empty-state">Failed to load.</div>`; }
+    } else if (active === 'services') {
+      try {
+        const list = await BB.listServices();
+        c.innerHTML = `
+          <div class="table-wrap"><table class="bb-table">
+            <thead><tr><th>Service</th><th>Category</th><th>Duration</th><th>Price</th><th>Status</th><th>Actions</th></tr></thead>
+            <tbody>${list.map(s => `
+              <tr>
+                <td><b>${s.name}</b><br><span class="muted" style="font-size:.8rem;">${(s.description || '').slice(0,60)}</span></td>
+                <td>${serviceIcon(s.category)} ${s.category_display}</td>
+                <td>${s.duration_minutes} min</td>
+                <td><b>${formatMoney(s.price)}</b></td>
+                <td>${s.is_active ? '<span class="pill pill-confirmed">Active</span>' : '<span class="pill pill-rejected">Inactive</span>'}</td>
+                <td>
+                  <button class="btn btn-outline btn-sm" onclick='editService(${JSON.stringify(s)})'>Edit</button>
+                  <button class="btn btn-danger btn-sm" onclick="deleteService(${s.id})">Delete</button>
+                </td>
+              </tr>`).join('')}</tbody></table></div>`;
+      } catch (e) { c.innerHTML = `<div class="empty-state">Failed to load.</div>`; }
+    } else {
+      const s = window.__stats || {top_barbers:[], top_services:[]};
+      c.innerHTML = `
+        <div style="display:grid; grid-template-columns: 1fr 1fr; gap: 1.5rem;">
+          <div>
+            <h3>Top barbers by bookings</h3>
+            <div class="table-wrap"><table class="bb-table"><thead><tr><th>Barber</th><th>Bookings</th></tr></thead>
+              <tbody>${(s.top_barbers||[]).length ? s.top_barbers.map(t => `<tr><td>${t.barber__display_name}</td><td><b>${t.bookings}</b></td></tr>`).join('')
+                : '<tr><td colspan="2" style="text-align:center; color:var(--muted);">No data yet</td></tr>'}</tbody></table></div>
+          </div>
+          <div>
+            <h3>Top services by bookings</h3>
+            <div class="table-wrap"><table class="bb-table"><thead><tr><th>Service</th><th>Bookings</th></tr></thead>
+              <tbody>${(s.top_services||[]).length ? s.top_services.map(t => `<tr><td>${t.service__name}</td><td><b>${t.bookings}</b></td></tr>`).join('')
+                : '<tr><td colspan="2" style="text-align:center; color:var(--muted);">No data yet</td></tr>'}</tbody></table></div>
+          </div>
+        </div>`;
+    }
+  }
+
+  // Status update
+  window.setStatus = async (id, st) => {
+    try { await BB.adminUpdateStatus(id, st); toast('Updated', 'success'); loadStats(); renderTab(); }
+    catch (e) { toast(e.message || 'Failed', 'error'); }
+  };
+
+  // Service modal
+  window.openServiceModal = () => {
+    document.getElementById('serviceForm').reset();
+    document.querySelector('#serviceForm [name=id]').value = '';
+    document.getElementById('serviceModalTitle').textContent = 'Add Service';
+    document.getElementById('serviceModal').classList.add('active');
+  };
+  window.closeServiceModal = () => document.getElementById('serviceModal').classList.remove('active');
+  window.editService = (s) => {
+    openServiceModal();
+    document.getElementById('serviceModalTitle').textContent = 'Edit Service';
+    const f = document.getElementById('serviceForm');
+    Object.entries(s).forEach(([k,v]) => { if (f.elements[k]) {
+      if (f.elements[k].type === 'checkbox') f.elements[k].checked = !!v;
+      else f.elements[k].value = v ?? '';
+    }});
+  };
+  window.deleteService = async (id) => {
+    if (!confirm('Delete this service?')) return;
+    try { await BB.deleteService(id); toast('Deleted', 'success'); renderTab(); }
+    catch (e) { toast('Delete failed', 'error'); }
+  };
+  document.getElementById('serviceForm').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const fd = new FormData(e.target); const payload = {};
+    fd.forEach((v,k) => payload[k] = v);
+    payload.is_active = e.target.elements.is_active.checked;
+    payload.duration_minutes = parseInt(payload.duration_minutes);
+    payload.price = parseFloat(payload.price);
+    const id = payload.id; delete payload.id;
+    try {
+      if (id) await BB.updateService(id, payload); else await BB.createService(payload);
+      toast('Saved', 'success'); closeServiceModal(); renderTab();
+    } catch (err) { toast(err.message || 'Save failed', 'error'); }
+  });
+
+  // Barber modal
+  async function renderServiceCheckboxes(selectedIds = []) {
+    if (!allServices.length) allServices = await BB.listServices();
+    const set = new Set(selectedIds.map(x => parseInt(x)));
+    document.getElementById('serviceCheckboxes').innerHTML = allServices.map(s => `
+      <label style="font-size:.85rem; font-weight:500; text-transform:none; letter-spacing:0; display:flex; align-items:center; gap:.4rem;">
+        <input type="checkbox" value="${s.id}" ${set.has(s.id)?'checked':''}> ${s.name}
+      </label>
+    `).join('');
+  }
+  window.openBarberModal = async () => {
+    document.getElementById('barberForm').reset();
+    document.querySelector('#barberForm [name=id]').value = '';
+    document.getElementById('barberModalTitle').textContent = 'Add Barber';
+    await renderServiceCheckboxes([]);
+    document.getElementById('barberModal').classList.add('active');
+  };
+  window.closeBarberModal = () => document.getElementById('barberModal').classList.remove('active');
+  window.editBarber = async (b) => {
+    await openBarberModal();
+    document.getElementById('barberModalTitle').textContent = 'Edit Barber';
+    const f = document.getElementById('barberForm');
+    ['id','display_name','specialty','years_experience','work_start','work_end','days_off','avatar_url','bio'].forEach(k => {
+      if (f.elements[k] && b[k] !== undefined && b[k] !== null) f.elements[k].value = b[k];
+    });
+    f.elements.is_active.checked = !!b.is_active;
+    await renderServiceCheckboxes((b.services_detail || []).map(s => s.id));
+  };
+  window.deleteBarber = async (id) => {
+    if (!confirm('Delete this barber?')) return;
+    try { await BB.deleteBarber(id); toast('Deleted', 'success'); renderTab(); }
+    catch (e) { toast('Delete failed', 'error'); }
+  };
+  document.getElementById('barberForm').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const fd = new FormData(e.target); const payload = {};
+    fd.forEach((v,k) => payload[k] = v);
+    payload.is_active = e.target.elements.is_active.checked;
+    payload.years_experience = parseInt(payload.years_experience || 0);
+    // service_ids
+    const selected = Array.from(document.querySelectorAll('#serviceCheckboxes input:checked')).map(x => parseInt(x.value));
+    payload.service_ids = selected;
+    const id = payload.id; delete payload.id;
+    try {
+      if (id) await BB.updateBarber(id, payload); else await BB.createBarber(payload);
+      toast('Saved', 'success'); closeBarberModal(); renderTab();
+    } catch (err) { toast(err.message || 'Save failed', 'error'); }
+  });
+
+  document.querySelectorAll('.dash-tab').forEach(t => t.addEventListener('click', () => {
+    document.querySelectorAll('.dash-tab').forEach(x => x.classList.remove('active'));
+    t.classList.add('active'); active = t.dataset.tab; renderTab();
+  }));
+
+  loadStats(); renderTab();
+}
+</script>
+{% endblock %}
